@@ -6,8 +6,9 @@ requires-python = "==3.12.*"
 dependencies = [
     "google-adk==2.9.2",
     "google-cloud-monitoring==2.31.0",
-    "google-api-core",
-    "google-auth",
+    "google-api-core==2.34.0",
+    "google-auth==2.58.0",
+    "google-cloud-logging==3.16.3",
 ]
 
 [dependency-groups]
