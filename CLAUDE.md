@@ -41,6 +41,11 @@ brouillon de postmortem en markdown.
 - Prioriser du code testable en local avec `adk web` avant tout déploiement
   sur GKE/Agent Engine.
 
+## Conventions
+
+- **Commits** : respecter impérativement le format [Conventional Commits](https://www.conventionalcommits.org/)
+  (`feat: `, `fix: `, `chore: `, `docs: `, `refactor: `, `test: `, etc.).
+
 ## État du projet
 
 Projet à l'état de plan (`todo.md`), aucun code n'a encore été écrit. Pas de
