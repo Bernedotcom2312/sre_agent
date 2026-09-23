@@ -1,0 +1,19 @@
+[project]
+name = "sre-agent"
+version = "0.1.0"
+description = "SRE Agent — Copilote de diagnostic d'incidents GKE (ADK)"
+requires-python = "==3.12.*"
+dependencies = [
+    "google-adk==2.9.2",
+    "google-cloud-monitoring==2.31.0",
+    "google-api-core",
+    "google-auth",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+]
+
+[tool.uv]
+package = false
