@@ -1,19 +1,51 @@
+import os
+
+from google.api_core.exceptions import GoogleAPICallError
+from google.auth.exceptions import DefaultCredentialsError
+from google.cloud import monitoring_v3
+
+
 def get_alerts(time_range: str) -> dict:
-    """Récupère les alertes Cloud Monitoring actives sur une période donnée.
+    """Récupère les politiques d'alerte Cloud Monitoring actives sur le projet.
+
+    Note : l'API Cloud Monitoring n'expose pas publiquement la liste des
+    incidents en cours (les alertes "en train de sonner"), seulement les
+    politiques d'alerte configurées. On retourne donc les politiques
+    activées comme proxy des alertes surveillées. `time_range` est gardé
+    dans la signature pour un futur filtrage temporel (ex: via Cloud
+    Logging) mais n'est pas encore utilisé.
 
     Args:
         time_range: fenêtre temporelle, ex: "1h", "24h".
     """
-    return {
-        "alerts": [
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not project_id:
+        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+
+    try:
+        client = monitoring_v3.AlertPolicyServiceClient()
+        policies = client.list_alert_policies(name=f"projects/{project_id}")
+
+        alerts = [
             {
-                "name": "CPU high",
-                "severity": "warning",
-                "resource": "payments-api",
-                "started_at": "2026-09-23T09:12:00Z",
+                "name": policy.display_name,
+                "severity": policy.severity.name,
+                "conditions": [condition.display_name for condition in policy.conditions],
             }
+            for policy in policies
+            if policy.enabled
         ]
-    }
+        return {"time_range": time_range, "alerts": alerts}
+
+    except DefaultCredentialsError:
+        return {
+            "error": (
+                "Authentification GCP manquante. Lance "
+                "`gcloud auth application-default login` puis réessaie."
+            )
+        }
+    except GoogleAPICallError as exc:
+        return {"error": f"Erreur API Cloud Monitoring: {exc.message}"}
 
 
 def get_pod_logs(namespace: str, pod: str) -> dict:
