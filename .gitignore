@@ -1,0 +1,7 @@
+todo.md
+.env
+**/.env
+__pycache__/
+*.pyc
+.venv/
+**/.adk/
