@@ -1,7 +1,7 @@
 [project]
 name = "sre-agent"
 version = "0.1.0"
-description = "SRE Agent — Copilote de diagnostic d'incidents GKE (ADK)"
+description = "SRE Agent — GKE incident diagnosis copilot (ADK)"
 requires-python = "==3.12.*"
 dependencies = [
     "google-adk==2.9.2",
@@ -23,8 +23,8 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 filterwarnings = [
-    # Émis par google-adk lui-même (LlmAgentConfig hérite d'une BaseAgentConfig
-    # que le package a dépréciée en interne) : rien à corriger côté projet.
+    # Emitted by google-adk itself (LlmAgentConfig inherits from a BaseAgentConfig
+    # that the package has deprecated internally): nothing to fix on our side.
     "ignore:BaseAgentConfig is deprecated.*:DeprecationWarning",
 ]
 

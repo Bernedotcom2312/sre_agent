@@ -82,7 +82,7 @@ def test_get_alerts_handles_api_error(mock_client_cls, monkeypatch):
 
     result = get_alerts("1h")
 
-    assert result == {"error": "Erreur API GCP dans get_alerts: quota exceeded"}
+    assert result == {"error": "GCP API error in get_alerts: quota exceeded"}
 
 
 def test_get_pod_logs_missing_project_id(monkeypatch):
@@ -114,7 +114,7 @@ def test_get_pod_logs_handles_api_error(mock_client_cls, monkeypatch):
 
     result = get_pod_logs("toto", "tata")
 
-    assert result == {"error": "Erreur API GCP dans get_pod_logs: quota exceeded"}
+    assert result == {"error": "GCP API error in get_pod_logs: quota exceeded"}
 
 
 @patch("sre_agent.tools.logging.Client")
@@ -198,7 +198,7 @@ def test_get_k8s_events_handles_api_error(mock_client_cls, monkeypatch):
 
     result = get_k8s_events("toto")
 
-    assert result == {"error": "Erreur API GCP dans get_k8s_events: quota exceeded"}
+    assert result == {"error": "GCP API error in get_k8s_events: quota exceeded"}
 
 
 @patch("sre_agent.tools.logging.Client")
@@ -293,7 +293,7 @@ def test_get_recent_deploys_handles_api_error(mock_client_cls, monkeypatch):
 
     result = get_recent_deploys("toto")
 
-    assert result == {"error": "Erreur API GCP dans get_recent_deploys: quota exceeded"}
+    assert result == {"error": "GCP API error in get_recent_deploys: quota exceeded"}
 
 
 @patch("sre_agent.tools.logging.Client")

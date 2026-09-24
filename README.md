@@ -66,10 +66,11 @@ Opens the ADK web interface to chat with the agent and watch tool calls live.
 
 All tools are **read-only** — the agent diagnoses, it never acts on the cluster:
 
-- `get_alerts(time_range)` — active Cloud Monitoring alert policies (wired to the real API)
-- `get_pod_logs(namespace, pod)` — recent pod logs (mocked)
-- `get_k8s_events(namespace)` — recent Kubernetes events (mocked)
-- `get_recent_deploys(namespace)` — recent deployments, to correlate deploy → incident (mocked)
+- `get_alerts(time_range)` — active Cloud Monitoring alert policies
+- `get_pod_logs(namespace, pod)` — recent pod logs (via Cloud Logging)
+- `get_k8s_events(namespace)` — recent Kubernetes events (via Cloud Logging)
+- `get_recent_deploys(namespace)` — recent deployments, to correlate deploy → incident (via
+  Cloud Audit Logs)
 
 ## Tests
 

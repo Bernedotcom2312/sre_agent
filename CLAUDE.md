@@ -1,52 +1,52 @@
-# SRE Agent — Copilote de diagnostic d'incidents
+# SRE Agent — Incident diagnosis copilot
 
-## Objectif
+## Goal
 
-Réduire le MTTR (métrique DORA) en donnant à un agent la capacité de corréler
-alertes, logs et events GKE, puis de proposer un diagnostic et un brouillon
-de postmortem. Voir `todo.md` pour le plan détaillé.
+Reduce MTTR (a DORA metric) by giving an agent the ability to correlate
+alerts, logs, and GKE events, then propose a diagnosis and a draft
+postmortem. See `todo.md` for the detailed plan.
 
 ## Stack
 
-- **Framework agent** : Google ADK (Agent Development Kit), Python.
-- **Sources de données** : Cloud Monitoring (alertes, métriques), Cloud
-  Logging, events Kubernetes (`kubectl get events` ou export vers Cloud
-  Logging).
-- **Déploiement cible** : GKE (tutoriel officiel ADK + GKE) ou Agent Engine.
-- **Interface** : `adk web` en local pour le dev ; Slack ou chat web une fois
-  déployé.
+- **Agent framework**: Google ADK (Agent Development Kit), Python.
+- **Data sources**: Cloud Monitoring (alerts, metrics), Cloud Logging,
+  Kubernetes events (`kubectl get events` or exported to Cloud Logging).
+- **Deployment target**: GKE (official ADK + GKE tutorial) or Agent Engine.
+- **Interface**: `adk web` locally for dev; Slack or a web chat once
+  deployed.
 
 ## Architecture
 
-Agent unique pour le POC (multi-agent via A2A envisageable plus tard pour
-séparer "collecte" et "synthèse"). Tous les tools sont en **lecture seule**
-(function calling) :
+Single agent for the POC (multi-agent via A2A could be considered later to
+separate "collection" from "synthesis"). All tools are **read-only**
+(function calling):
 
 - `get_alerts(time_range)`
 - `get_pod_logs(namespace, pod)`
 - `get_k8s_events(namespace)`
-- `get_recent_deploys(namespace)` — corrélation déploiement → incident
+- `get_recent_deploys(namespace)` — deploy → incident correlation
 
-Sortie attendue : résumé structuré (cause probable, timeline, impact) +
-brouillon de postmortem en markdown.
+Expected output: a structured summary (probable cause, timeline, impact) +
+a draft postmortem in markdown.
 
-## Contraintes importantes
+## Key constraints
 
-- **Lecture seule** : aucun tool ne doit pouvoir modifier l'état du cluster,
-  déclencher un déploiement, ou écrire dans un système externe. L'agent
-  diagnostique, il n'agit pas.
-- Les credentials GCP/GKE ne doivent jamais être committés ; utiliser
-  l'authentification standard (ADC, service account monté) et laisser ces
-  fichiers hors du repo.
-- Prioriser du code testable en local avec `adk web` avant tout déploiement
-  sur GKE/Agent Engine.
+- **Read-only**: no tool may modify cluster state, trigger a deployment, or
+  write to an external system. The agent diagnoses, it does not act.
+- GCP/GKE credentials must never be committed; use standard authentication
+  (ADC, mounted service account) and keep those files out of the repo.
+- Prioritize code that's testable locally with `adk web` before any
+  deployment to GKE/Agent Engine.
 
 ## Conventions
 
-- **Commits** : respecter impérativement le format [Conventional Commits](https://www.conventionalcommits.org/)
+- **Commits**: must strictly follow the
+  [Conventional Commits](https://www.conventionalcommits.org/) format
   (`feat: `, `fix: `, `chore: `, `docs: `, `refactor: `, `test: `, etc.).
 
-## État du projet
+## Project status
 
-Projet à l'état de plan (`todo.md`), aucun code n'a encore été écrit. Pas de
-dépôt git initialisé.
+Core agent and tools are implemented (see `sre_agent/`): `get_alerts` and
+`get_pod_logs` are wired to real GCP APIs, `get_k8s_events` and
+`get_recent_deploys` use Cloud Audit Logs. See `todo.md` for what's left
+(simulating an incident, deployment, DORA metric tracking).

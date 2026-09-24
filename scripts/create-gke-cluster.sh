@@ -9,23 +9,23 @@ NUM_NODES="${NUM_NODES:-1}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
-  echo "Erreur : aucun projet GCP défini (gcloud config set project <id> ou export PROJECT_ID=...)" >&2
+  echo "Error: no GCP project set (gcloud config set project <id> or export PROJECT_ID=...)" >&2
   exit 1
 fi
 
-echo "Projet       : ${PROJECT_ID}"
+echo "Project      : ${PROJECT_ID}"
 echo "Cluster      : ${CLUSTER_NAME}"
 echo "Zone         : ${ZONE}"
-echo "Machine type : ${MACHINE_TYPE} x${NUM_NODES}, disque ${DISK_SIZE_GB}Go"
+echo "Machine type : ${MACHINE_TYPE} x${NUM_NODES}, disk ${DISK_SIZE_GB}GB"
 
-echo "Activation des APIs nécessaires..."
+echo "Enabling required APIs..."
 gcloud services enable \
   container.googleapis.com \
   logging.googleapis.com \
   monitoring.googleapis.com \
   --project "${PROJECT_ID}"
 
-echo "Création du cluster GKE..."
+echo "Creating the GKE cluster..."
 gcloud container clusters create "${CLUSTER_NAME}" \
   --project "${PROJECT_ID}" \
   --zone "${ZONE}" \
@@ -38,9 +38,9 @@ gcloud container clusters create "${CLUSTER_NAME}" \
   --no-enable-ip-alias \
   --release-channel regular
 
-echo "Récupération des credentials kubectl..."
+echo "Fetching kubectl credentials..."
 gcloud container clusters get-credentials "${CLUSTER_NAME}" \
   --zone "${ZONE}" \
   --project "${PROJECT_ID}"
 
-echo "Terminé. Contexte kubectl configuré pour '${CLUSTER_NAME}'."
+echo "Done. kubectl context configured for '${CLUSTER_NAME}'."

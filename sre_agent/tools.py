@@ -18,32 +18,31 @@ def handle_gcp_errors(func):
         except DefaultCredentialsError:
             return {
                 "error": (
-                    "Authentification GCP manquante. Lance "
-                    "`gcloud auth application-default login` puis réessaie."
+                    "Missing GCP authentication. Run "
+                    "`gcloud auth application-default login` then try again."
                 )
             }
         except GoogleAPICallError as exc:
-            return {"error": f"Erreur API GCP dans {func.__name__}: {exc.message}"}
+            return {"error": f"GCP API error in {func.__name__}: {exc.message}"}
 
     return wrapper
 
 
 @handle_gcp_errors
 def get_alerts(time_range: str) -> dict:
-    """Récupère les politiques d'alerte Cloud Monitoring actives sur le projet.
+    """Fetches the active Cloud Monitoring alert policies for the project.
 
-    Note : l'API Cloud Monitoring n'expose pas publiquement la liste des
-    incidents en cours (les alertes "en train de sonner"), seulement les
-    politiques d'alerte configurées. On retourne donc les politiques
-    activées comme proxy des alertes surveillées. `time_range` est gardé
-    dans la signature pour un futur filtrage temporel (ex: via Cloud
-    Logging) mais n'est pas encore utilisé.
+    Note: the Cloud Monitoring API does not publicly expose the list of
+    currently firing incidents (alerts "actively ringing"), only the
+    configured alert policies. We therefore return the enabled policies as a
+    proxy for the monitored alerts. `time_range` is kept in the signature for
+    future time-based filtering (e.g. via Cloud Logging) but is not used yet.
 
     Args:
-        time_range: fenêtre temporelle, ex: "1h", "24h".
+        time_range: time window, e.g. "1h", "24h".
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
 
     client = monitoring_v3.AlertPolicyServiceClient()
     policies = client.list_alert_policies(name=f"projects/{project_id}")
@@ -61,7 +60,7 @@ def get_alerts(time_range: str) -> dict:
 
 
 def _fetch_log_entries(filter_: str, max_results: int = 100):
-    """Interroge Cloud Logging et retourne les entrées correspondant au filtre."""
+    """Queries Cloud Logging and returns the entries matching the filter."""
     logging_client = logging.Client(project=project_id)
     return logging_client.list_entries(
         order_by=DESCENDING, filter_=filter_, max_results=max_results
@@ -70,14 +69,14 @@ def _fetch_log_entries(filter_: str, max_results: int = 100):
 
 @handle_gcp_errors
 def get_pod_logs(namespace: str, pod: str) -> dict:
-    """Récupère les dernières lignes de logs d'un pod Kubernetes via Cloud Logging.
+    """Fetches the latest log lines for a Kubernetes pod via Cloud Logging.
 
     Args:
-        namespace: namespace Kubernetes du pod.
-        pod: nom du pod.
+        namespace: Kubernetes namespace of the pod.
+        pod: pod name.
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
 
     log_filter = (
         f"resource.type:k8s_container"
@@ -98,13 +97,13 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
 
 @handle_gcp_errors
 def get_k8s_events(namespace: str) -> dict:
-    """Récupère les events Kubernetes récents d'un namespace.
+    """Fetches recent Kubernetes events for a namespace.
 
     Args:
-        namespace: namespace Kubernetes à inspecter.
+        namespace: Kubernetes namespace to inspect.
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
 
     log_filter = (
         f"resource.type:k8s_event"
@@ -126,21 +125,21 @@ def get_k8s_events(namespace: str) -> dict:
 
 @handle_gcp_errors
 def get_recent_deploys(namespace: str) -> dict:
-    """Récupère les déploiements récents d'un namespace via les Cloud Audit Logs
-    GKE, pour repérer une corrélation déploiement -> incident.
+    """Fetches recent deployments for a namespace via GKE Cloud Audit Logs,
+    to spot a deploy -> incident correlation.
 
-    S'appuie sur les Admin Activity audit logs
-    (`cloudaudit.googleapis.com/activity`), qui journalisent les créations et
-    mises à jour de Deployments. Ces logs ne portent pas le commit git associé
-    (sauf annotation spécifique ajoutée par la CI, non gérée ici) : on expose
-    donc la révision, la méthode (create/update/patch) et l'auteur du
-    changement.
+    Relies on the Admin Activity audit logs
+    (`cloudaudit.googleapis.com/activity`), which log Deployment creations and
+    updates. These logs don't carry the associated git commit (unless a
+    specific annotation is added by CI, which isn't handled here), so we
+    expose the revision, the method (create/update/patch), and the author of
+    the change instead.
 
     Args:
-        namespace: namespace Kubernetes à inspecter.
+        namespace: Kubernetes namespace to inspect.
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
 
     log_filter = (
         f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
