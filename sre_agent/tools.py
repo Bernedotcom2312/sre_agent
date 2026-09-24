@@ -84,22 +84,34 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
         })
     return {"namespace": namespace, "pod": pod, "logs": logs}
 
+@handle_gcp_errors
 def get_k8s_events(namespace: str) -> dict:
     """Récupère les events Kubernetes récents d'un namespace.
 
     Args:
         namespace: namespace Kubernetes à inspecter.
     """
-    return {
-        "namespace": namespace,
-        "events": [
-            {
-                "reason": "BackOff",
-                "message": "Back-off restarting failed container",
-                "object": "pod/payments-api-7d4f9c-abcde",
-            }
-        ],
-    }
+    if not project_id:
+        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+
+    logging_client = logging.Client(project = project_id)
+    FILTER = (
+    f'resource.type:k8s_event'
+    f' AND resource.labels.namespace_name="{namespace}"'
+    f' AND timestamp>="{last_hour.strftime(time_format)}"'
+    )
+
+    events = []
+    for entry in logging_client.list_entries(order_by=DESCENDING, filter_=FILTER, max_results=100):
+        events.append({
+            "timestamp": entry.timestamp.strftime(time_format),
+            "reason": entry.payload["reason"],
+            "message": entry.payload["message"],
+            "object": entry.payload["involvedObject"]["name"]
+        })
+
+    return {"namespace": namespace, "events": events}
+
 
 
 def get_recent_deploys(namespace: str) -> dict:

@@ -6,7 +6,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud.logging import DESCENDING
 
-from sre_agent.tools import get_alerts, get_pod_logs, time_format
+from sre_agent.tools import get_alerts, get_pod_logs,get_k8s_events, time_format
 from datetime import datetime, timezone
 
 def _fake_policy(display_name, enabled, severity, conditions):
@@ -158,3 +158,100 @@ def test_get_pod_logs_returns_empty_logs_when_no_entries(mock_client_cls, monkey
 
     mock_client.list_entries.assert_called_once()
     assert result == {"namespace": "toto", "pod": "tata", "logs": []}
+
+def test_get_k8s_events_missing_project_id(monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", None)
+
+    result = get_k8s_events("toto")
+
+    assert "error" in result
+    assert "GOOGLE_CLOUD_PROJECT" in result["error"]
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_k8s_events_handles_missing_credentials(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client_cls.side_effect = DefaultCredentialsError("no ADC found")
+
+    result = get_k8s_events("toto")
+
+    assert "error" in result
+    assert "gcloud auth application-default login" in result["error"]
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_k8s_events_handles_api_error(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.side_effect = GoogleAPICallError("quota exceeded")
+    mock_client_cls.return_value = mock_client
+
+    result = get_k8s_events("toto")
+
+    assert result == {"error": "Erreur API GCP dans get_k8s_events: quota exceeded"}
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    entry_1 = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=timezone.utc),
+        payload = {
+            "reason": "BackOff",
+            "message": "Back-off restarting failed container",
+            "involvedObject": {
+                "name": "pod1"
+            }
+        }
+    )
+    entry_2 = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 0, 5, tzinfo=timezone.utc),
+        payload = {
+            "reason": "OOMKilled",
+            "message": "Memory excedeed",
+            "involvedObject": {
+                "name": "pod2"
+            }
+        }
+    )
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = [entry_1, entry_2]
+    mock_client_cls.return_value = mock_client
+
+    result = get_k8s_events("toto")
+
+    mock_client_cls.assert_called_once_with(project="my-project")
+    _, call_kwargs = mock_client.list_entries.call_args
+    assert call_kwargs["order_by"] == DESCENDING
+    assert call_kwargs["max_results"] == 100
+    assert 'resource.type:k8s_event' in call_kwargs["filter_"]
+    assert 'resource.labels.namespace_name="toto"' in call_kwargs["filter_"]
+    assert result == {
+        "namespace": "toto",
+        "events": [
+            {
+                "timestamp": entry_1.timestamp.strftime(time_format),
+                "reason": entry_1.payload["reason"],
+                "message": entry_1.payload["message"],
+                "object": entry_1.payload["involvedObject"]["name"]            
+            },
+            {
+                "timestamp": entry_2.timestamp.strftime(time_format),
+                "reason": entry_2.payload["reason"],
+                "message": entry_2.payload["message"],
+                "object": entry_2.payload["involvedObject"]["name"]                      
+            },
+        ],
+    }
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_k8s_events_returns_empty_logs_when_no_entries(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = []
+    mock_client_cls.return_value = mock_client
+
+    result = get_k8s_events("toto")
+
+    mock_client.list_entries.assert_called_once()
+    assert result == {"namespace": "toto", "events": []}
