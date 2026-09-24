@@ -14,6 +14,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
+    "ruff==0.16.8",
 ]
 
 [tool.uv]
@@ -26,3 +27,10 @@ filterwarnings = [
     # que le package a dépréciée en interne) : rien à corriger côté projet.
     "ignore:BaseAgentConfig is deprecated.*:DeprecationWarning",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "N", "B"]

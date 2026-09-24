@@ -1,13 +1,19 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud.logging import DESCENDING
 
-from sre_agent.tools import get_alerts, get_pod_logs, get_k8s_events, get_recent_deploys, time_format
-from datetime import datetime, timezone
+from sre_agent.tools import (
+    get_alerts,
+    get_k8s_events,
+    get_pod_logs,
+    get_recent_deploys,
+    time_format,
+)
+
 
 def _fake_policy(display_name, enabled, severity, conditions):
     return SimpleNamespace(
@@ -17,8 +23,10 @@ def _fake_policy(display_name, enabled, severity, conditions):
         conditions=[SimpleNamespace(display_name=c) for c in conditions],
     )
 
+
 def _fake_log_entry(timestamp, payload):
     return SimpleNamespace(timestamp=timestamp, payload=payload)
+
 
 def test_get_alerts_missing_project_id(monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", None)
@@ -80,10 +88,11 @@ def test_get_alerts_handles_api_error(mock_client_cls, monkeypatch):
 def test_get_pod_logs_missing_project_id(monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", None)
 
-    result = get_pod_logs("toto","tata")
+    result = get_pod_logs("toto", "tata")
 
     assert "error" in result
     assert "GOOGLE_CLOUD_PROJECT" in result["error"]
+
 
 @patch("sre_agent.tools.logging.Client")
 def test_get_pod_logs_handles_missing_credentials(mock_client_cls, monkeypatch):
@@ -112,11 +121,11 @@ def test_get_pod_logs_handles_api_error(mock_client_cls, monkeypatch):
 def test_get_pod_logs_maps_log_entries(mock_client_cls, monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
     entry_1 = _fake_log_entry(
-        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=UTC),
         payload="INFO : healthcheck",
     )
     entry_2 = _fake_log_entry(
-        timestamp=datetime(2026, 9, 24, 10, 0, 5, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 9, 24, 10, 0, 5, tzinfo=UTC),
         payload="ERROR : CrashLoopBackOff",
     )
     mock_client = MagicMock()
@@ -159,6 +168,7 @@ def test_get_pod_logs_returns_empty_logs_when_no_entries(mock_client_cls, monkey
     mock_client.list_entries.assert_called_once()
     assert result == {"namespace": "toto", "pod": "tata", "logs": []}
 
+
 def test_get_k8s_events_missing_project_id(monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", None)
 
@@ -166,6 +176,7 @@ def test_get_k8s_events_missing_project_id(monkeypatch):
 
     assert "error" in result
     assert "GOOGLE_CLOUD_PROJECT" in result["error"]
+
 
 @patch("sre_agent.tools.logging.Client")
 def test_get_k8s_events_handles_missing_credentials(mock_client_cls, monkeypatch):
@@ -194,24 +205,20 @@ def test_get_k8s_events_handles_api_error(mock_client_cls, monkeypatch):
 def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
     entry_1 = _fake_log_entry(
-        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=timezone.utc),
-        payload = {
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=UTC),
+        payload={
             "reason": "BackOff",
             "message": "Back-off restarting failed container",
-            "involvedObject": {
-                "name": "pod1"
-            }
-        }
+            "involvedObject": {"name": "pod1"},
+        },
     )
     entry_2 = _fake_log_entry(
-        timestamp=datetime(2026, 9, 24, 10, 0, 5, tzinfo=timezone.utc),
-        payload = {
+        timestamp=datetime(2026, 9, 24, 10, 0, 5, tzinfo=UTC),
+        payload={
             "reason": "OOMKilled",
             "message": "Memory excedeed",
-            "involvedObject": {
-                "name": "pod2"
-            }
-        }
+            "involvedObject": {"name": "pod2"},
+        },
     )
     mock_client = MagicMock()
     mock_client.list_entries.return_value = [entry_1, entry_2]
@@ -223,7 +230,7 @@ def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
     _, call_kwargs = mock_client.list_entries.call_args
     assert call_kwargs["order_by"] == DESCENDING
     assert call_kwargs["max_results"] == 100
-    assert 'resource.type:k8s_event' in call_kwargs["filter_"]
+    assert "resource.type:k8s_event" in call_kwargs["filter_"]
     assert 'resource.labels.namespace_name="toto"' in call_kwargs["filter_"]
     assert result == {
         "namespace": "toto",
@@ -232,13 +239,13 @@ def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
                 "timestamp": entry_1.timestamp.strftime(time_format),
                 "reason": entry_1.payload["reason"],
                 "message": entry_1.payload["message"],
-                "object": entry_1.payload["involvedObject"]["name"]            
+                "object": entry_1.payload["involvedObject"]["name"],
             },
             {
                 "timestamp": entry_2.timestamp.strftime(time_format),
                 "reason": entry_2.payload["reason"],
                 "message": entry_2.payload["message"],
-                "object": entry_2.payload["involvedObject"]["name"]                      
+                "object": entry_2.payload["involvedObject"]["name"],
             },
         ],
     }
@@ -256,6 +263,7 @@ def test_get_k8s_events_returns_empty_logs_when_no_entries(mock_client_cls, monk
     mock_client.list_entries.assert_called_once()
     assert result == {"namespace": "toto", "events": []}
 
+
 def test_get_recent_deploys_missing_project_id(monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", None)
 
@@ -263,6 +271,7 @@ def test_get_recent_deploys_missing_project_id(monkeypatch):
 
     assert "error" in result
     assert "GOOGLE_CLOUD_PROJECT" in result["error"]
+
 
 @patch("sre_agent.tools.logging.Client")
 def test_get_recent_deploys_handles_missing_credentials(mock_client_cls, monkeypatch):
@@ -291,7 +300,7 @@ def test_get_recent_deploys_handles_api_error(mock_client_cls, monkeypatch):
 def test_get_recent_deploys_maps_log_entries(mock_client_cls, monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
     entry_1 = _fake_log_entry(
-        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=UTC),
         payload={
             "resourceName": "namespaces/toto/deployments/payments-api",
             "methodName": "io.k8s.apps.v1.deployments.update",
@@ -299,7 +308,7 @@ def test_get_recent_deploys_maps_log_entries(mock_client_cls, monkeypatch):
         },
     )
     entry_2 = _fake_log_entry(
-        timestamp=datetime(2026, 9, 24, 10, 5, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 9, 24, 10, 5, 0, tzinfo=UTC),
         payload={
             "resourceName": "namespaces/toto/deployments/payments-worker",
             "methodName": "io.k8s.apps.v1.deployments.create",

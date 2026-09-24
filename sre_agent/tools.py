@@ -1,14 +1,15 @@
 import os
+from datetime import UTC, datetime, timedelta
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
-from google.cloud import monitoring_v3, logging
+from google.cloud import logging, monitoring_v3
 from google.cloud.logging import DESCENDING
-from datetime import datetime, timedelta, timezone
 
 project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-last_hour = datetime.now(timezone.utc) - timedelta(hours=1)
+last_hour = datetime.now(UTC) - timedelta(hours=1)
 time_format = "%Y-%m-%dT%H:%M:%S.%f%z"
+
 
 def handle_gcp_errors(func):
     def wrapper(*args, **kwargs):
@@ -17,13 +18,15 @@ def handle_gcp_errors(func):
         except DefaultCredentialsError:
             return {
                 "error": (
-                        "Authentification GCP manquante. Lance "
-                        "`gcloud auth application-default login` puis réessaie."
+                    "Authentification GCP manquante. Lance "
+                    "`gcloud auth application-default login` puis réessaie."
                 )
             }
         except GoogleAPICallError as exc:
             return {"error": f"Erreur API GCP dans {func.__name__}: {exc.message}"}
+
     return wrapper
+
 
 @handle_gcp_errors
 def get_alerts(time_range: str) -> dict:
@@ -56,10 +59,14 @@ def get_alerts(time_range: str) -> dict:
     ]
     return {"time_range": time_range, "alerts": alerts}
 
+
 def _fetch_log_entries(filter_: str, max_results: int = 100):
     """Interroge Cloud Logging et retourne les entrées correspondant au filtre."""
     logging_client = logging.Client(project=project_id)
-    return logging_client.list_entries(order_by=DESCENDING, filter_=filter_, max_results=max_results)
+    return logging_client.list_entries(
+        order_by=DESCENDING, filter_=filter_, max_results=max_results
+    )
+
 
 @handle_gcp_errors
 def get_pod_logs(namespace: str, pod: str) -> dict:
@@ -72,11 +79,11 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
     if not project_id:
         return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
 
-    FILTER = (
-    f'resource.type:k8s_container'
-    f' AND resource.labels.namespace_name="{namespace}"'
-    f' AND resource.labels.pod_name="{pod}"'
-    f' AND timestamp>="{last_hour.strftime(time_format)}"'
+    log_filter = (
+        f"resource.type:k8s_container"
+        f' AND resource.labels.namespace_name="{namespace}"'
+        f' AND resource.labels.pod_name="{pod}"'
+        f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
 
     logs = [
@@ -84,9 +91,10 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
             "timestamp": entry.timestamp.strftime(time_format),
             "message": entry.payload,
         }
-        for entry in _fetch_log_entries(FILTER)
+        for entry in _fetch_log_entries(log_filter)
     ]
     return {"namespace": namespace, "pod": pod, "logs": logs}
+
 
 @handle_gcp_errors
 def get_k8s_events(namespace: str) -> dict:
@@ -98,10 +106,10 @@ def get_k8s_events(namespace: str) -> dict:
     if not project_id:
         return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
 
-    FILTER = (
-    f'resource.type:k8s_event'
-    f' AND resource.labels.namespace_name="{namespace}"'
-    f' AND timestamp>="{last_hour.strftime(time_format)}"'
+    log_filter = (
+        f"resource.type:k8s_event"
+        f' AND resource.labels.namespace_name="{namespace}"'
+        f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
 
     events = [
@@ -111,10 +119,9 @@ def get_k8s_events(namespace: str) -> dict:
             "message": entry.payload["message"],
             "object": entry.payload["involvedObject"]["name"],
         }
-        for entry in _fetch_log_entries(FILTER)
+        for entry in _fetch_log_entries(log_filter)
     ]
     return {"namespace": namespace, "events": events}
-
 
 
 @handle_gcp_errors
@@ -135,12 +142,12 @@ def get_recent_deploys(namespace: str) -> dict:
     if not project_id:
         return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
 
-    FILTER = (
-    f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
-    f' AND resource.type="k8s_cluster"'
-    f' AND protoPayload.methodName:"deployments"'
-    f' AND protoPayload.resourceName:"namespaces/{namespace}/deployments"'
-    f' AND timestamp>="{last_hour.strftime(time_format)}"'
+    log_filter = (
+        f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
+        f' AND resource.type="k8s_cluster"'
+        f' AND protoPayload.methodName:"deployments"'
+        f' AND protoPayload.resourceName:"namespaces/{namespace}/deployments"'
+        f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
 
     deploys = [
@@ -150,6 +157,6 @@ def get_recent_deploys(namespace: str) -> dict:
             "method": entry.payload["methodName"],
             "principal": entry.payload.get("authenticationInfo", {}).get("principalEmail"),
         }
-        for entry in _fetch_log_entries(FILTER)
+        for entry in _fetch_log_entries(log_filter)
     ]
     return {"namespace": namespace, "deploys": deploys}
