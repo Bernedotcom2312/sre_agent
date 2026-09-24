@@ -21,3 +21,8 @@ package = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = [
+    # Émis par google-adk lui-même (LlmAgentConfig hérite d'une BaseAgentConfig
+    # que le package a dépréciée en interne) : rien à corriger côté projet.
+    "ignore:BaseAgentConfig is deprecated.*:DeprecationWarning",
+]
