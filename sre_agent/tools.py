@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime, timedelta
+from functools import wraps
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
@@ -12,6 +13,7 @@ time_format = "%Y-%m-%dT%H:%M:%S.%f%z"
 
 
 def handle_gcp_errors(func):
+    @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -73,7 +75,7 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
 
     Args:
         namespace: Kubernetes namespace of the pod.
-        pod: pod name.
+        pod: container name to match against (resource.labels.container_name).
     """
     if not project_id:
         return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
@@ -81,7 +83,7 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
     log_filter = (
         f"resource.type:k8s_container"
         f' AND resource.labels.namespace_name="{namespace}"'
-        f' AND resource.labels.pod_name="{pod}"'
+        f' AND resource.labels.container_name="{pod}"'
         f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
 
@@ -106,7 +108,7 @@ def get_k8s_events(namespace: str) -> dict:
         return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
 
     log_filter = (
-        f"resource.type:k8s_event"
+        f'(resource.type="k8s_event" OR resource.type="k8s_pod")'
         f' AND resource.labels.namespace_name="{namespace}"'
         f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
