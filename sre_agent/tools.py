@@ -56,6 +56,11 @@ def get_alerts(time_range: str) -> dict:
     ]
     return {"time_range": time_range, "alerts": alerts}
 
+def _fetch_log_entries(filter_: str, max_results: int = 100):
+    """Interroge Cloud Logging et retourne les entrées correspondant au filtre."""
+    logging_client = logging.Client(project=project_id)
+    return logging_client.list_entries(order_by=DESCENDING, filter_=filter_, max_results=max_results)
+
 @handle_gcp_errors
 def get_pod_logs(namespace: str, pod: str) -> dict:
     """Récupère les dernières lignes de logs d'un pod Kubernetes via Cloud Logging.
@@ -67,7 +72,6 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
     if not project_id:
         return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
 
-    logging_client = logging.Client(project = project_id)
     FILTER = (
     f'resource.type:k8s_container'
     f' AND resource.labels.namespace_name="{namespace}"'
@@ -75,13 +79,13 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
     f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
 
-    logs = []
-
-    for entry in logging_client.list_entries(order_by=DESCENDING, filter_=FILTER, max_results=100):
-        logs.append({
+    logs = [
+        {
             "timestamp": entry.timestamp.strftime(time_format),
-            "message": entry.payload
-        })
+            "message": entry.payload,
+        }
+        for entry in _fetch_log_entries(FILTER)
+    ]
     return {"namespace": namespace, "pod": pod, "logs": logs}
 
 @handle_gcp_errors
@@ -94,22 +98,21 @@ def get_k8s_events(namespace: str) -> dict:
     if not project_id:
         return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
 
-    logging_client = logging.Client(project = project_id)
     FILTER = (
     f'resource.type:k8s_event'
     f' AND resource.labels.namespace_name="{namespace}"'
     f' AND timestamp>="{last_hour.strftime(time_format)}"'
     )
 
-    events = []
-    for entry in logging_client.list_entries(order_by=DESCENDING, filter_=FILTER, max_results=100):
-        events.append({
+    events = [
+        {
             "timestamp": entry.timestamp.strftime(time_format),
             "reason": entry.payload["reason"],
             "message": entry.payload["message"],
-            "object": entry.payload["involvedObject"]["name"]
-        })
-
+            "object": entry.payload["involvedObject"]["name"],
+        }
+        for entry in _fetch_log_entries(FILTER)
+    ]
     return {"namespace": namespace, "events": events}
 
 
