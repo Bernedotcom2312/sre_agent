@@ -6,7 +6,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud.logging import DESCENDING
 
-from sre_agent.tools import get_alerts, get_pod_logs,get_k8s_events, time_format
+from sre_agent.tools import get_alerts, get_pod_logs, get_k8s_events, get_recent_deploys, time_format
 from datetime import datetime, timezone
 
 def _fake_policy(display_name, enabled, severity, conditions):
@@ -255,3 +255,96 @@ def test_get_k8s_events_returns_empty_logs_when_no_entries(mock_client_cls, monk
 
     mock_client.list_entries.assert_called_once()
     assert result == {"namespace": "toto", "events": []}
+
+def test_get_recent_deploys_missing_project_id(monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", None)
+
+    result = get_recent_deploys("toto")
+
+    assert "error" in result
+    assert "GOOGLE_CLOUD_PROJECT" in result["error"]
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_recent_deploys_handles_missing_credentials(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client_cls.side_effect = DefaultCredentialsError("no ADC found")
+
+    result = get_recent_deploys("toto")
+
+    assert "error" in result
+    assert "gcloud auth application-default login" in result["error"]
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_recent_deploys_handles_api_error(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.side_effect = GoogleAPICallError("quota exceeded")
+    mock_client_cls.return_value = mock_client
+
+    result = get_recent_deploys("toto")
+
+    assert result == {"error": "Erreur API GCP dans get_recent_deploys: quota exceeded"}
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_recent_deploys_maps_log_entries(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    entry_1 = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=timezone.utc),
+        payload={
+            "resourceName": "namespaces/toto/deployments/payments-api",
+            "methodName": "io.k8s.apps.v1.deployments.update",
+            "authenticationInfo": {"principalEmail": "ci@my-project.iam.gserviceaccount.com"},
+        },
+    )
+    entry_2 = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 5, 0, tzinfo=timezone.utc),
+        payload={
+            "resourceName": "namespaces/toto/deployments/payments-worker",
+            "methodName": "io.k8s.apps.v1.deployments.create",
+            "authenticationInfo": {"principalEmail": "alice@example.com"},
+        },
+    )
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = [entry_1, entry_2]
+    mock_client_cls.return_value = mock_client
+
+    result = get_recent_deploys("toto")
+
+    mock_client_cls.assert_called_once_with(project="my-project")
+    _, call_kwargs = mock_client.list_entries.call_args
+    assert call_kwargs["order_by"] == DESCENDING
+    assert call_kwargs["max_results"] == 100
+    assert 'protoPayload.methodName:"deployments"' in call_kwargs["filter_"]
+    assert 'protoPayload.resourceName:"namespaces/toto/deployments"' in call_kwargs["filter_"]
+    assert result == {
+        "namespace": "toto",
+        "deploys": [
+            {
+                "timestamp": entry_1.timestamp.strftime(time_format),
+                "revision": "payments-api",
+                "method": "io.k8s.apps.v1.deployments.update",
+                "principal": "ci@my-project.iam.gserviceaccount.com",
+            },
+            {
+                "timestamp": entry_2.timestamp.strftime(time_format),
+                "revision": "payments-worker",
+                "method": "io.k8s.apps.v1.deployments.create",
+                "principal": "alice@example.com",
+            },
+        ],
+    }
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_recent_deploys_returns_empty_deploys_when_no_entries(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = []
+    mock_client_cls.return_value = mock_client
+
+    result = get_recent_deploys("toto")
+
+    mock_client.list_entries.assert_called_once()
+    assert result == {"namespace": "toto", "deploys": []}

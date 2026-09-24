@@ -117,19 +117,39 @@ def get_k8s_events(namespace: str) -> dict:
 
 
 
+@handle_gcp_errors
 def get_recent_deploys(namespace: str) -> dict:
-    """Récupère les déploiements récents d'un namespace pour repérer une corrélation déploiement -> incident.
+    """Récupère les déploiements récents d'un namespace via les Cloud Audit Logs
+    GKE, pour repérer une corrélation déploiement -> incident.
+
+    S'appuie sur les Admin Activity audit logs
+    (`cloudaudit.googleapis.com/activity`), qui journalisent les créations et
+    mises à jour de Deployments. Ces logs ne portent pas le commit git associé
+    (sauf annotation spécifique ajoutée par la CI, non gérée ici) : on expose
+    donc la révision, la méthode (create/update/patch) et l'auteur du
+    changement.
 
     Args:
         namespace: namespace Kubernetes à inspecter.
     """
-    return {
-        "namespace": namespace,
-        "deploys": [
-            {
-                "revision": "payments-api-v42",
-                "deployed_at": "2026-09-23T09:00:00Z",
-                "commit": "a1b2c3d",
-            }
-        ],
-    }
+    if not project_id:
+        return {"error": "GOOGLE_CLOUD_PROJECT n'est pas défini dans l'environnement."}
+
+    FILTER = (
+    f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
+    f' AND resource.type="k8s_cluster"'
+    f' AND protoPayload.methodName:"deployments"'
+    f' AND protoPayload.resourceName:"namespaces/{namespace}/deployments"'
+    f' AND timestamp>="{last_hour.strftime(time_format)}"'
+    )
+
+    deploys = [
+        {
+            "timestamp": entry.timestamp.strftime(time_format),
+            "revision": entry.payload["resourceName"].split("/")[-1],
+            "method": entry.payload["methodName"],
+            "principal": entry.payload.get("authenticationInfo", {}).get("principalEmail"),
+        }
+        for entry in _fetch_log_entries(FILTER)
+    ]
+    return {"namespace": namespace, "deploys": deploys}
