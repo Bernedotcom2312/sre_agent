@@ -86,6 +86,34 @@ PROJECT_ID=<my-gcp-project> ./scripts/create-gke-cluster.sh
 
 Provisions a minimal GKE cluster with Cloud Logging/Monitoring enabled and configures `kubectl`.
 
+## Deploy to Agent Engine
+
+The agent can be deployed to [Vertex AI Agent Engine](https://cloud.google.com/vertex-ai/generative-ai/docs/agent-engine/overview),
+a managed, serverless hosting platform for ADK agents:
+
+```bash
+uv run adk deploy agent_engine sre_agent \
+  --project=<my-gcp-project> \
+  --region=<region> \
+  --display_name="SRE Agent"
+```
+
+Notes:
+
+- Requires the `aiplatform`, `artifactregistry`, `storage`, and `cloudbuild` APIs enabled on the
+  target project.
+- The deploy CLI builds a container image and pushes it to Agent Engine; after the "Dockerfile
+  created at ..." line it goes silent while the build/deploy runs server-side — this can take
+  5–15 minutes on a first deploy, with no further CLI output until it completes or fails.
+- `sre_agent/requirements.txt` lists the extra runtime dependencies (`google-cloud-monitoring`,
+  `google-cloud-logging`, `google-api-core`, `google-auth`) that the deploy CLI doesn't infer
+  automatically from `pyproject.toml` — keep it in sync with `pyproject.toml` or the deployed
+  container will fail to import the tools.
+- `adk deploy agent_engine` only uses `GOOGLE_CLOUD_PROJECT` (from `.env` or `--project`) to pick
+  the deploy target — it does **not** forward it as a runtime env var to the deployed agent.
+  `tools.py` works around this by falling back to the project discovered via Application Default
+  Credentials (`google.auth.default()`) when `GOOGLE_CLOUD_PROJECT` isn't set.
+
 ## Conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/)

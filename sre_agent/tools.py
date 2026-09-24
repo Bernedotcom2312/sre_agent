@@ -2,12 +2,32 @@ import os
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
+import google.auth
 from google.api_core.exceptions import GoogleAPICallError
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import logging, monitoring_v3
 from google.cloud.logging import DESCENDING
 
-project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+
+def _resolve_project_id() -> str | None:
+    """Resolves the GCP project, falling back to ADC-discovered project.
+
+    `adk deploy agent_engine` strips GOOGLE_CLOUD_PROJECT from the deployed
+    agent's runtime env vars (it only uses it to pick the deploy target), so
+    once deployed this env var is absent and we must fall back to the
+    ambient credentials' project instead.
+    """
+    env_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if env_project:
+        return env_project
+    try:
+        _, adc_project = google.auth.default()
+        return adc_project
+    except DefaultCredentialsError:
+        return None
+
+
+project_id = _resolve_project_id()
 last_hour = datetime.now(UTC) - timedelta(hours=1)
 time_format = "%Y-%m-%dT%H:%M:%S.%f%z"
 
@@ -44,7 +64,12 @@ def get_alerts(time_range: str) -> dict:
         time_range: time window, e.g. "1h", "24h".
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
+        return {
+            "error": (
+                "Could not resolve a GCP project (no GOOGLE_CLOUD_PROJECT env"
+                " var and no ADC-discovered project)."
+            )
+        }
 
     client = monitoring_v3.AlertPolicyServiceClient()
     policies = client.list_alert_policies(name=f"projects/{project_id}")
@@ -78,7 +103,12 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
         pod: container name to match against (resource.labels.container_name).
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
+        return {
+            "error": (
+                "Could not resolve a GCP project (no GOOGLE_CLOUD_PROJECT env"
+                " var and no ADC-discovered project)."
+            )
+        }
 
     log_filter = (
         f"resource.type:k8s_container"
@@ -105,7 +135,12 @@ def get_k8s_events(namespace: str) -> dict:
         namespace: Kubernetes namespace to inspect.
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
+        return {
+            "error": (
+                "Could not resolve a GCP project (no GOOGLE_CLOUD_PROJECT env"
+                " var and no ADC-discovered project)."
+            )
+        }
 
     log_filter = (
         f'(resource.type="k8s_event" OR resource.type="k8s_pod")'
@@ -141,7 +176,12 @@ def get_recent_deploys(namespace: str) -> dict:
         namespace: Kubernetes namespace to inspect.
     """
     if not project_id:
-        return {"error": "GOOGLE_CLOUD_PROJECT is not set in the environment."}
+        return {
+            "error": (
+                "Could not resolve a GCP project (no GOOGLE_CLOUD_PROJECT env"
+                " var and no ADC-discovered project)."
+            )
+        }
 
     log_filter = (
         f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
