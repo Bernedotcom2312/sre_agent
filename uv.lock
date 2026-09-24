@@ -324,22 +324,6 @@ wheels = [
 ]
 
 [[package]]
-name = "google-cloud-container"
-version = "2.66.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "google-api-core", extra = ["grpc"] },
-    { name = "google-auth" },
-    { name = "grpcio" },
-    { name = "proto-plus" },
-    { name = "protobuf" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/12/91/563d7b57a74a237253ca13591e49ed45122d22a28f2afe9d92ad64661d96/google_cloud_container-2.66.0.tar.gz", hash = "sha256:c022a2ed5371e1169ce2b947462eb8d51d4ccd3028c621ef699428b766be0cdc", size = 415376, upload-time = "2026-09-03T22:31:07.614Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/73/e7d8b287d266e54983b4ec9344c6b1044ccd46257657327bf5133ad648a3/google_cloud_container-2.66.0-py3-none-any.whl", hash = "sha256:ba2f0a2f77156e4b12c07958104597a1553debf03a16033ea376488f994c920e", size = 359321, upload-time = "2026-09-03T22:30:25.815Z" },
-]
-
-[[package]]
 name = "google-cloud-core"
 version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -868,7 +852,6 @@ dependencies = [
     { name = "google-adk" },
     { name = "google-api-core" },
     { name = "google-auth" },
-    { name = "google-cloud-container" },
     { name = "google-cloud-logging" },
     { name = "google-cloud-monitoring" },
 ]
@@ -883,7 +866,6 @@ requires-dist = [
     { name = "google-adk", specifier = "==2.9.2" },
     { name = "google-api-core", specifier = "==2.34.0" },
     { name = "google-auth", specifier = "==2.58.0" },
-    { name = "google-cloud-container", specifier = "==2.66.0" },
     { name = "google-cloud-logging", specifier = "==3.16.3" },
     { name = "google-cloud-monitoring", specifier = "==2.31.0" },
 ]
