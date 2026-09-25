@@ -139,6 +139,7 @@ def test_get_pod_logs_maps_log_entries(mock_client_cls, monkeypatch):
     _, call_kwargs = mock_client.list_entries.call_args
     assert call_kwargs["order_by"] == DESCENDING
     assert call_kwargs["max_results"] == 100
+    assert 'resource.type="k8s_container"' in call_kwargs["filter_"]
     assert 'resource.labels.namespace_name="toto"' in call_kwargs["filter_"]
     assert 'resource.labels.container_name="tata"' in call_kwargs["filter_"]
     assert result == {
@@ -347,20 +348,24 @@ def test_get_recent_deploys_maps_log_entries(mock_client_cls, monkeypatch):
     _, call_kwargs = mock_client.list_entries.call_args
     assert call_kwargs["order_by"] == DESCENDING
     assert call_kwargs["max_results"] == 100
-    assert 'protoPayload.methodName:"deployments"' in call_kwargs["filter_"]
+    assert 'protoPayload.methodName:"deployments.create"' in call_kwargs["filter_"]
+    assert 'protoPayload.methodName:"deployments.update"' in call_kwargs["filter_"]
+    assert 'protoPayload.methodName:"deployments.patch"' in call_kwargs["filter_"]
+    # A deletion is not a deploy: it must not be able to match the filter.
+    assert "deployments.delete" not in call_kwargs["filter_"]
     assert 'protoPayload.resourceName:"namespaces/toto/deployments"' in call_kwargs["filter_"]
     assert result == {
         "namespace": "toto",
         "deploys": [
             {
                 "timestamp": entry_1.timestamp.strftime(time_format),
-                "revision": "payments-api",
+                "deployment": "payments-api",
                 "method": "io.k8s.apps.v1.deployments.update",
                 "principal": "ci@my-project.iam.gserviceaccount.com",
             },
             {
                 "timestamp": entry_2.timestamp.strftime(time_format),
-                "revision": "payments-worker",
+                "deployment": "payments-worker",
                 "method": "io.k8s.apps.v1.deployments.create",
                 "principal": "alice@example.com",
             },

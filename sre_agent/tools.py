@@ -137,7 +137,7 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
         }
 
     log_filter = (
-        f"resource.type:k8s_container"
+        f'resource.type="k8s_container"'
         f' AND resource.labels.namespace_name="{namespace}"'
         f' AND resource.labels.container_name="{pod}"'
         f' AND timestamp>="{_since()}"'
@@ -195,8 +195,8 @@ def get_recent_deploys(namespace: str) -> dict:
     (`cloudaudit.googleapis.com/activity`), which log Deployment creations and
     updates. These logs don't carry the associated git commit (unless a
     specific annotation is added by CI, which isn't handled here), so we
-    expose the revision, the method (create/update/patch), and the author of
-    the change instead.
+    expose the Deployment name, the method (create/update/patch), and the
+    author of the change instead.
 
     Args:
         namespace: Kubernetes namespace to inspect.
@@ -212,7 +212,12 @@ def get_recent_deploys(namespace: str) -> dict:
     log_filter = (
         f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
         f' AND resource.type="k8s_cluster"'
-        f' AND protoPayload.methodName:"deployments"'
+        # Spelled out instead of the shorter `methodName:"deployments"`, which
+        # also matches `...deployments.delete` — a deletion would then be
+        # listed as a deploy and correlated with the incident as one.
+        f' AND (protoPayload.methodName:"deployments.create"'
+        f' OR protoPayload.methodName:"deployments.update"'
+        f' OR protoPayload.methodName:"deployments.patch")'
         f' AND protoPayload.resourceName:"namespaces/{namespace}/deployments"'
         f' AND timestamp>="{_since()}"'
     )
@@ -220,7 +225,7 @@ def get_recent_deploys(namespace: str) -> dict:
     deploys = [
         {
             "timestamp": entry.timestamp.strftime(time_format),
-            "revision": entry.payload["resourceName"].split("/")[-1],
+            "deployment": entry.payload["resourceName"].split("/")[-1],
             "method": entry.payload["methodName"],
             "principal": entry.payload.get("authenticationInfo", {}).get("principalEmail"),
         }
