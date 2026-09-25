@@ -139,7 +139,7 @@ def test_get_pod_logs_maps_log_entries(mock_client_cls, monkeypatch):
     assert call_kwargs["order_by"] == DESCENDING
     assert call_kwargs["max_results"] == 100
     assert 'resource.labels.namespace_name="toto"' in call_kwargs["filter_"]
-    assert 'resource.labels.pod_name="tata"' in call_kwargs["filter_"]
+    assert 'resource.labels.container_name="tata"' in call_kwargs["filter_"]
     assert result == {
         "namespace": "toto",
         "pod": "tata",
@@ -230,7 +230,7 @@ def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
     _, call_kwargs = mock_client.list_entries.call_args
     assert call_kwargs["order_by"] == DESCENDING
     assert call_kwargs["max_results"] == 100
-    assert "resource.type:k8s_event" in call_kwargs["filter_"]
+    assert 'resource.type="k8s_event"' in call_kwargs["filter_"]
     assert 'resource.labels.namespace_name="toto"' in call_kwargs["filter_"]
     assert result == {
         "namespace": "toto",
