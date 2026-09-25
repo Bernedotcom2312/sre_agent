@@ -57,6 +57,12 @@ def handle_gcp_errors(func):
             }
         except GoogleAPICallError as exc:
             return {"error": f"GCP API error in {func.__name__}: {exc.message}"}
+        except Exception as exc:
+            # Last-resort net: an exception escaping a tool aborts the agent's
+            # turn, so a single malformed log entry would take down the whole
+            # diagnosis. Returned as data, the model can report it, or try
+            # another tool.
+            return {"error": f"Unexpected error in {func.__name__}: {type(exc).__name__}: {exc}"}
 
     return wrapper
 
@@ -157,6 +163,12 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
 def get_k8s_events(namespace: str) -> dict:
     """Fetches recent Kubernetes events for a namespace.
 
+    Matches on the `events` log rather than on resource types: that log is
+    what holds Kubernetes Event objects, whereas the resource type follows
+    the object an event is about (k8s_pod, k8s_node, k8s_cluster...). So
+    filtering by resource type both missed events about non-pod objects and
+    picked up ordinary logs, whose payload is not an Event at all.
+
     Args:
         namespace: Kubernetes namespace to inspect.
     """
@@ -169,20 +181,29 @@ def get_k8s_events(namespace: str) -> dict:
         }
 
     log_filter = (
-        f'(resource.type="k8s_event" OR resource.type="k8s_pod")'
+        f'logName="projects/{project_id}/logs/events"'
         f' AND resource.labels.namespace_name="{namespace}"'
         f' AND timestamp>="{_since()}"'
     )
 
-    events = [
-        {
-            "timestamp": entry.timestamp.strftime(time_format),
-            "reason": entry.payload["reason"],
-            "message": entry.payload["message"],
-            "object": entry.payload["involvedObject"]["name"],
-        }
-        for entry in _fetch_log_entries(log_filter)
-    ]
+    events = []
+    for entry in _fetch_log_entries(log_filter):
+        payload = entry.payload
+        # An Event is a JSON payload; a text payload means this entry is not
+        # one, and indexing it would raise rather than just miss a field.
+        if not isinstance(payload, dict):
+            continue
+        involved_object = payload.get("involvedObject")
+        events.append(
+            {
+                "timestamp": entry.timestamp.strftime(time_format),
+                "reason": payload.get("reason"),
+                "message": payload.get("message"),
+                "object": (
+                    involved_object.get("name") if isinstance(involved_object, dict) else None
+                ),
+            }
+        )
     return {"namespace": namespace, "events": events}
 
 

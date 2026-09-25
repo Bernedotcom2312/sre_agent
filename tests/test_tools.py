@@ -253,7 +253,7 @@ def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
     _, call_kwargs = mock_client.list_entries.call_args
     assert call_kwargs["order_by"] == DESCENDING
     assert call_kwargs["max_results"] == 100
-    assert 'resource.type="k8s_event"' in call_kwargs["filter_"]
+    assert 'logName="projects/my-project/logs/events"' in call_kwargs["filter_"]
     assert 'resource.labels.namespace_name="toto"' in call_kwargs["filter_"]
     assert result == {
         "namespace": "toto",
@@ -272,6 +272,77 @@ def test_get_k8s_events_maps_log_entries(mock_client_cls, monkeypatch):
             },
         ],
     }
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_k8s_events_skips_entries_that_are_not_events(mock_client_cls, monkeypatch):
+    """A non-Event entry must be dropped, not crash the whole tool call."""
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    text_entry = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=UTC),
+        payload="plain text log line, not an Event object",
+    )
+    event_entry = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 0, 5, tzinfo=UTC),
+        payload={
+            "reason": "OOMKilled",
+            "message": "Memory exceeded",
+            "involvedObject": {"name": "pod2"},
+        },
+    )
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = [text_entry, event_entry]
+    mock_client_cls.return_value = mock_client
+
+    result = get_k8s_events("toto")
+
+    assert result == {
+        "namespace": "toto",
+        "events": [
+            {
+                "timestamp": event_entry.timestamp.strftime(time_format),
+                "reason": "OOMKilled",
+                "message": "Memory exceeded",
+                "object": "pod2",
+            }
+        ],
+    }
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_get_k8s_events_tolerates_events_with_missing_fields(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    entry = _fake_log_entry(
+        timestamp=datetime(2026, 9, 24, 10, 0, 0, tzinfo=UTC),
+        payload={"message": "something happened"},
+    )
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = [entry]
+    mock_client_cls.return_value = mock_client
+
+    result = get_k8s_events("toto")
+
+    assert result["events"] == [
+        {
+            "timestamp": entry.timestamp.strftime(time_format),
+            "reason": None,
+            "message": "something happened",
+            "object": None,
+        }
+    ]
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_tool_returns_error_dict_on_unexpected_exception(mock_client_cls, monkeypatch):
+    """An unexpected error must come back as data, not escape the tool."""
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.side_effect = ValueError("boom")
+    mock_client_cls.return_value = mock_client
+
+    result = get_k8s_events("toto")
+
+    assert result == {"error": "Unexpected error in get_k8s_events: ValueError: boom"}
 
 
 @patch("sre_agent.tools.logging.Client")
