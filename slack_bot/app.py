@@ -140,9 +140,7 @@ def build_bolt_app() -> App:
 
         try:
             session_id = sessions.get_or_create(thread_key, user_id)
-            events = list(
-                engine.stream_query(user_id=user_id, session_id=session_id, message=text)
-            )
+            events = list(engine.stream_query(user_id=user_id, session_id=session_id, message=text))
             reply = extract_reply(events)
         except Exception:
             logger.exception("Agent Engine query failed for thread %s", thread_key)
