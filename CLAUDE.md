@@ -4,7 +4,7 @@
 
 Reduce MTTR (a DORA metric) by giving an agent the ability to correlate
 alerts, logs, and GKE events, then propose a diagnosis and a draft
-postmortem. See `todo.md` for the detailed plan.
+postmortem.
 
 ## Stack
 
@@ -48,5 +48,5 @@ a draft postmortem in markdown.
 
 Core agent and tools are implemented (see `sre_agent/`): `get_alerts` and
 `get_pod_logs` are wired to real GCP APIs, `get_k8s_events` and
-`get_recent_deploys` use Cloud Audit Logs. See `todo.md` for what's left
-(simulating an incident, deployment, DORA metric tracking).
+`get_recent_deploys` use Cloud Audit Logs. What's left: simulating an
+incident, deployment, DORA metric tracking.

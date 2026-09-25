@@ -3,8 +3,7 @@
 An incident-diagnosis copilot for GKE built on [Google ADK](https://google.github.io/adk-docs/).
 The agent correlates Cloud Monitoring alerts, logs, and Kubernetes events to suggest a probable
 root cause, a timeline, and a draft postmortem — the goal is to reduce MTTR (a DORA metric).
-See [`todo.md`](todo.md) for the detailed plan and [`CLAUDE.md`](CLAUDE.md) for project
-conventions.
+See [`CLAUDE.md`](CLAUDE.md) for project conventions.
 
 ## Stack
 
@@ -32,8 +31,7 @@ sre_agent/
 ├── scripts/
 │   ├── create-gke-cluster.sh          # provisions a POC GKE cluster
 │   └── deploy-slack-bot-cloud-run.sh  # deploys the Slack bot to Cloud Run
-├── pyproject.toml / uv.lock    # pinned dependencies
-└── todo.md              # plan and roadmap
+└── pyproject.toml / uv.lock    # pinned dependencies
 ```
 
 ## Prerequisites
