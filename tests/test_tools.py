@@ -50,16 +50,17 @@ def test_get_alerts_filters_disabled_policies_and_maps_fields(mock_client_cls, m
     result = get_alerts("1h")
 
     mock_client.list_alert_policies.assert_called_once_with(name="projects/my-project")
-    assert result == {
-        "time_range": "1h",
-        "alerts": [
-            {
-                "name": "High CPU",
-                "severity": "CRITICAL",
-                "conditions": ["CPU > 90%"],
-            }
-        ],
-    }
+    assert result["time_range"] == "1h"
+    assert result["alert_policies"] == [
+        {
+            "name": "High CPU",
+            "severity": "CRITICAL",
+            "conditions": ["CPU > 90%"],
+        }
+    ]
+    # The model reads this alongside the list; without it, configured policies
+    # get reported as alerts that are ringing.
+    assert "not alerts currently firing" in result["note"]
 
 
 @patch("sre_agent.tools.monitoring_v3.AlertPolicyServiceClient")

@@ -63,13 +63,18 @@ def handle_gcp_errors(func):
 
 @handle_gcp_errors
 def get_alerts(time_range: str) -> dict:
-    """Fetches the active Cloud Monitoring alert policies for the project.
+    """Lists the alert policies configured and enabled on the project.
 
-    Note: the Cloud Monitoring API does not publicly expose the list of
-    currently firing incidents (alerts "actively ringing"), only the
-    configured alert policies. We therefore return the enabled policies as a
-    proxy for the monitored alerts. `time_range` is kept in the signature for
-    future time-based filtering (e.g. via Cloud Logging) but is not used yet.
+    These are the rules the project monitors, NOT the alerts currently
+    firing: the Cloud Monitoring API does not publicly expose open incidents
+    (alerts "actively ringing"), only their configuration. A policy in this
+    list says nothing about the current state of the system, so never report
+    one as an active alert or as evidence of an incident — use it only to
+    know what is monitored, and confirm any actual symptom via
+    get_k8s_events, get_pod_logs or get_recent_deploys.
+
+    `time_range` is kept in the signature for future time-based filtering
+    (e.g. via Cloud Logging) but is not used yet.
 
     Args:
         time_range: time window, e.g. "1h", "24h".
@@ -85,7 +90,7 @@ def get_alerts(time_range: str) -> dict:
     client = monitoring_v3.AlertPolicyServiceClient()
     policies = client.list_alert_policies(name=f"projects/{project_id}")
 
-    alerts = [
+    alert_policies = [
         {
             "name": policy.display_name,
             "severity": policy.severity.name,
@@ -94,7 +99,17 @@ def get_alerts(time_range: str) -> dict:
         for policy in policies
         if policy.enabled
     ]
-    return {"time_range": time_range, "alerts": alerts}
+    # The key and the note are part of the tool's answer to the model, not
+    # decoration: named "alerts", this list reads as "alerts that are ringing"
+    # and gets reported as an incident symptom.
+    return {
+        "time_range": time_range,
+        "note": (
+            "Alert policies configured on the project, not alerts currently"
+            " firing (the Cloud Monitoring API does not expose open incidents)."
+        ),
+        "alert_policies": alert_policies,
+    }
 
 
 def _fetch_log_entries(filter_: str, max_results: int = 100):
