@@ -22,12 +22,16 @@ sre_agent/
 │   └── tools.py        # read-only tools: get_alerts, get_pod_logs,
 │                        # get_k8s_events, get_recent_deploys
 ├── slack_bot/
-│   └── app.py           # Slack Socket Mode front end, queries Agent Engine
+│   └── app.py           # Slack Events API front end, queries Agent Engine
+├── manifests/
+│   ├── toto/             # sample workload manifests for the POC cluster
+│   └── tata/
 ├── tests/
 │   ├── test_tools.py    # unit tests (agent tools)
 │   └── test_slack_bot.py # unit tests (Slack bot)
 ├── scripts/
-│   └── create-gke-cluster.sh  # provisions a POC GKE cluster
+│   ├── create-gke-cluster.sh          # provisions a POC GKE cluster
+│   └── deploy-slack-bot-cloud-run.sh  # deploys the Slack bot to Cloud Run
 ├── pyproject.toml / uv.lock    # pinned dependencies
 └── todo.md              # plan and roadmap
 ```
