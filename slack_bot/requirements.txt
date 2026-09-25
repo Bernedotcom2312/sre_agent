@@ -1,0 +1,10 @@
+# Runtime dependencies for the Cloud Run container (see slack_bot/Dockerfile).
+# Kept separate from pyproject.toml so the container image only carries what
+# the bot itself needs (not the ADK/GCP-monitoring deps used by sre_agent/) —
+# same pattern as sre_agent/requirements.txt. Keep in sync with the `slack`
+# dependency group in pyproject.toml.
+flask==3.1.3
+gunicorn==23.0.0
+slack-bolt==1.30.0
+python-dotenv==1.2.3
+google-cloud-aiplatform[agent-engines]==2.2.0

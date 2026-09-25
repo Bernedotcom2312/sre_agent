@@ -21,8 +21,11 @@ sre_agent/
 │   ├── agent.py       # root_agent definition (model, instruction, tools)
 │   └── tools.py        # read-only tools: get_alerts, get_pod_logs,
 │                        # get_k8s_events, get_recent_deploys
+├── slack_bot/
+│   └── app.py           # Slack Socket Mode front end, queries Agent Engine
 ├── tests/
-│   └── test_tools.py   # unit tests (get_alerts)
+│   ├── test_tools.py    # unit tests (agent tools)
+│   └── test_slack_bot.py # unit tests (Slack bot)
 ├── scripts/
 │   └── create-gke-cluster.sh  # provisions a POC GKE cluster
 ├── pyproject.toml / uv.lock    # pinned dependencies
@@ -113,6 +116,72 @@ Notes:
   the deploy target — it does **not** forward it as a runtime env var to the deployed agent.
   `tools.py` works around this by falling back to the project discovered via Application Default
   Credentials (`google.auth.default()`) when `GOOGLE_CLOUD_PROJECT` isn't set.
+
+## Slack interface
+
+Once the agent is deployed to Agent Engine (see above), you can query it from Slack instead of
+`adk web`. `slack_bot/app.py` is a small Flask HTTP service that receives Slack's
+[Events API](https://api.slack.com/apis/events-api) callbacks (`app_mention`), forwards the
+message to the deployed agent, and posts the reply back in the same thread (each thread keeps its
+own Agent Engine session, so the agent remembers earlier turns in it). The bot only forwards
+text; it never touches GCP/GKE directly, and the agent's own tools stay read-only.
+
+It's meant to run on **Cloud Run with `min-instances=0`**: with no traffic there's no running
+container, so cost stays near zero between mentions (see
+`scripts/deploy-slack-bot-cloud-run.sh`). This needs a public HTTPS URL (unlike Socket Mode),
+secured by verifying Slack's request signature (`SLACK_SIGNING_SECRET`) rather than by
+authenticating the endpoint itself — that's why the Cloud Run service is deployed with
+`--allow-unauthenticated`.
+
+### 1. Create the Slack app
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
+   Name it (e.g. "SRE Agent") and pick your workspace.
+2. **OAuth & Permissions** → under **Scopes → Bot Token Scopes**, add `app_mentions:read` and
+   `chat:write`.
+3. **Install App** (left sidebar) → **Install to Workspace** → approve. Copy the **Bot User OAuth
+   Token** (starts with `xoxb-`); this is your `SLACK_BOT_TOKEN`.
+4. **Basic Information** → **App Credentials** → copy the **Signing Secret**; this is your
+   `SLACK_SIGNING_SECRET`.
+5. Deploy the bot first (step 2 below) so you have a URL — Slack verifies the Event Subscriptions
+   URL live when you save it.
+6. **Event Subscriptions** → toggle **on** → **Request URL**: `<cloud-run-url>/slack/events`
+   (Slack calls it immediately; the bot must already be deployed and answer the verification
+   challenge). Under **Subscribe to bot events**, add `app_mention`, then save.
+7. Invite the bot to a channel: `/invite @SRE Agent`.
+
+### 2. Deploy
+
+```bash
+PROJECT_ID=<my-gcp-project> \
+AGENT_ENGINE_LOCATION=<region> \
+AGENT_ENGINE_RESOURCE_NAME=projects/<project-number>/locations/<region>/reasoningEngines/<id> \
+SLACK_BOT_TOKEN=xoxb-... \
+SLACK_SIGNING_SECRET=... \
+./scripts/deploy-slack-bot-cloud-run.sh
+```
+
+`AGENT_ENGINE_RESOURCE_NAME` is printed at the end of `adk deploy agent_engine` (also visible via
+the Agent Engine list in the Vertex AI console). `AGENT_ENGINE_LOCATION` is the `--region` you
+passed to that deploy command — it's deliberately a separate variable from
+`GOOGLE_CLOUD_LOCATION`, since that one picks the Gemini model endpoint (e.g. `global`) and can
+be a different value.
+
+The script builds the container from `slack_bot/Dockerfile`, stores the Slack token and signing
+secret in Secret Manager, grants Cloud Run's runtime service account access to read them, and
+deploys to Cloud Run with `min-instances=0`. It prints the service URL to use for the Event
+Subscriptions Request URL above. Re-running it updates the existing service and secrets in place.
+
+Then in Slack: `@SRE Agent what's going on in namespace toto?`
+
+### Local testing
+
+```bash
+uv run --group slack python -m slack_bot.app
+```
+
+Runs the Flask dev server on `:8080`. Slack needs a public URL to reach it — expose one with e.g.
+`ngrok http 8080` and use that as a temporary Event Subscriptions Request URL while testing.
 
 ## Conventions
 
