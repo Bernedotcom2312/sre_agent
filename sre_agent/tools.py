@@ -28,8 +28,19 @@ def _resolve_project_id() -> str | None:
 
 
 project_id = _resolve_project_id()
-last_hour = datetime.now(UTC) - timedelta(hours=1)
 time_format = "%Y-%m-%dT%H:%M:%S.%f%z"
+
+
+def _since(hours: int = 1) -> str:
+    """Formats the start of the lookback window for a Cloud Logging filter.
+
+    Computed on every call, deliberately not stored in a module-level
+    constant: the agent process is long-lived (`adk web` locally, an Agent
+    Engine instance once deployed), so a constant would pin every query to
+    the hour preceding the process start and, after an hour of uptime,
+    report an ongoing incident as a quiet namespace.
+    """
+    return (datetime.now(UTC) - timedelta(hours=hours)).strftime(time_format)
 
 
 def handle_gcp_errors(func):
@@ -114,7 +125,7 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
         f"resource.type:k8s_container"
         f' AND resource.labels.namespace_name="{namespace}"'
         f' AND resource.labels.container_name="{pod}"'
-        f' AND timestamp>="{last_hour.strftime(time_format)}"'
+        f' AND timestamp>="{_since()}"'
     )
 
     logs = [
@@ -145,7 +156,7 @@ def get_k8s_events(namespace: str) -> dict:
     log_filter = (
         f'(resource.type="k8s_event" OR resource.type="k8s_pod")'
         f' AND resource.labels.namespace_name="{namespace}"'
-        f' AND timestamp>="{last_hour.strftime(time_format)}"'
+        f' AND timestamp>="{_since()}"'
     )
 
     events = [
@@ -188,7 +199,7 @@ def get_recent_deploys(namespace: str) -> dict:
         f' AND resource.type="k8s_cluster"'
         f' AND protoPayload.methodName:"deployments"'
         f' AND protoPayload.resourceName:"namespaces/{namespace}/deployments"'
-        f' AND timestamp>="{last_hour.strftime(time_format)}"'
+        f' AND timestamp>="{_since()}"'
     )
 
     deploys = [

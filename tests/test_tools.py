@@ -157,6 +157,27 @@ def test_get_pod_logs_maps_log_entries(mock_client_cls, monkeypatch):
 
 
 @patch("sre_agent.tools.logging.Client")
+def test_get_pod_logs_recomputes_the_time_window_on_every_call(mock_client_cls, monkeypatch):
+    """The lookback window must be derived from the clock at call time.
+
+    Patching the module's `datetime` only affects a window computed inside
+    the call: a module-level constant would keep the timestamp it got at
+    import time, which is the regression this guards against.
+    """
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = []
+    mock_client_cls.return_value = mock_client
+
+    with patch("sre_agent.tools.datetime") as mock_datetime:
+        mock_datetime.now.return_value = datetime(2026, 9, 24, 12, 0, 0, tzinfo=UTC)
+        get_pod_logs("toto", "tata")
+
+    _, call_kwargs = mock_client.list_entries.call_args
+    assert 'timestamp>="2026-09-24T11:00:00.000000+0000"' in call_kwargs["filter_"]
+
+
+@patch("sre_agent.tools.logging.Client")
 def test_get_pod_logs_returns_empty_logs_when_no_entries(mock_client_cls, monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
     mock_client = MagicMock()
