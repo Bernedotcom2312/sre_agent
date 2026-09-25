@@ -113,6 +113,21 @@ Notes:
   `google-cloud-logging`, `google-api-core`, `google-auth`) that the deploy CLI doesn't infer
   automatically from `pyproject.toml` — keep it in sync with `pyproject.toml` or the deployed
   container will fail to import the tools.
+- The deployed agent runs as a service account, and **that** is what actually makes it read-only:
+  the tools query nothing but Cloud Logging and Cloud Monitoring, so `roles/logging.viewer` and
+  `roles/monitoring.viewer` are all it needs. Grant those two and nothing else — if the agent's
+  identity keeps a role like Editor, the read-only guarantee in `CLAUDE.md` rests on the code
+  alone, and a future tool (or a prompt injected through a log line it reads) could act on the
+  cluster:
+
+  ```bash
+  AGENT_SA=<the service account shown on the Agent Engine instance>
+  for role in roles/logging.viewer roles/monitoring.viewer; do
+    gcloud projects add-iam-policy-binding <my-gcp-project> \
+      --member "serviceAccount:${AGENT_SA}" --role "$role" --condition=None
+  done
+  ```
+
 - `adk deploy agent_engine` only uses `GOOGLE_CLOUD_PROJECT` (from `.env` or `--project`) to pick
   the deploy target — it does **not** forward it as a runtime env var to the deployed agent.
   `tools.py` works around this by falling back to the project discovered via Application Default

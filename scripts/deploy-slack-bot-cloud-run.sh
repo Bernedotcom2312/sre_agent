@@ -6,11 +6,16 @@ set -euo pipefail
 # no running container -> no compute cost between mentions (see CLAUDE.md /
 # README "Slack interface" for the architecture).
 #
+# The service runs as its own least-privilege service account (see
+# RUNTIME_SA below), not as the project's default Compute account.
+#
 # Prerequisites:
 #   - The agent already deployed via `adk deploy agent_engine` (README).
 #   - A Slack app with Event Subscriptions (not Socket Mode) — see README.
 #   - `gcloud auth login` done locally, with permission to deploy Cloud Run
-#     services and manage secrets on the target project.
+#     services, manage secrets, and create service accounts / grant roles on
+#     the target project (Cloud Run also requires iam.serviceAccounts.actAs
+#     on the runtime account, which Owner/Editor already covers).
 #
 # Usage:
 #   PROJECT_ID=<gcp-project> \
@@ -23,6 +28,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-europe-west1}"
 SERVICE_NAME="${SERVICE_NAME:-sre-agent-slack-bot}"
+RUNTIME_SA_NAME="${RUNTIME_SA_NAME:-sre-agent-slack-bot}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "Error: no GCP project set (gcloud config set project <id> or export PROJECT_ID=...)" >&2
@@ -43,6 +49,7 @@ gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
   secretmanager.googleapis.com \
+  iam.googleapis.com \
   --project "${PROJECT_ID}"
 
 create_or_update_secret() {
@@ -60,10 +67,24 @@ echo "Storing Slack credentials in Secret Manager..."
 create_or_update_secret slack-bot-token "${SLACK_BOT_TOKEN}"
 create_or_update_secret slack-signing-secret "${SLACK_SIGNING_SECRET}"
 
-# Cloud Run's default runtime service account needs explicit access to read
-# these secrets — it has no Secret Manager permissions by default.
-PROJECT_NUMBER="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
-RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+# Deliberately NOT Cloud Run's default runtime account
+# (<project-number>-compute@developer.gserviceaccount.com): that one carries
+# the Editor role on the whole project, so the bot — which only needs to
+# query the agent and read two secrets — could delete a GKE workload. The
+# agent's read-only guarantee (CLAUDE.md) is worth little if the identity
+# hosting its front end can write anything, so give the service its own
+# account and grant it just those two capabilities.
+RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+if gcloud iam service-accounts describe "${RUNTIME_SA}" --project "${PROJECT_ID}" >/dev/null 2>&1
+then
+  echo "Runtime service account ${RUNTIME_SA} already exists."
+else
+  echo "Creating runtime service account ${RUNTIME_SA}..."
+  gcloud iam service-accounts create "${RUNTIME_SA_NAME}" \
+    --project "${PROJECT_ID}" \
+    --display-name "SRE Agent Slack bot (Cloud Run runtime)"
+fi
 
 grant_secret_access() {
   gcloud secrets add-iam-policy-binding "$1" \
@@ -77,6 +98,16 @@ echo "Granting ${RUNTIME_SA} access to the secrets..."
 grant_secret_access slack-bot-token
 grant_secret_access slack-signing-secret
 
+# Needed to create a session on the deployed agent and stream a query to it.
+# aiplatform.user is the narrowest predefined role that covers querying a
+# reasoning engine; it grants nothing outside Vertex AI.
+echo "Granting ${RUNTIME_SA} permission to query Agent Engine..."
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member "serviceAccount:${RUNTIME_SA}" \
+  --role roles/aiplatform.user \
+  --condition=None \
+  >/dev/null
+
 # max-instances=1 is a correctness constraint, not a cost one: the bot keeps
 # its Slack-thread -> Agent Engine session mapping in memory (see
 # AgentSessions in slack_bot/app.py), so a second instance would restart some
@@ -87,6 +118,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --project "${PROJECT_ID}" \
   --region "${REGION}" \
   --source slack_bot \
+  --service-account "${RUNTIME_SA}" \
   --allow-unauthenticated \
   --min-instances=0 \
   --max-instances=1 \
