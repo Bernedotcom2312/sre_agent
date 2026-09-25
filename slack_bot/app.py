@@ -21,6 +21,7 @@ Run locally with: `uv run --group slack python -m slack_bot.app`
 import logging
 import os
 import re
+import threading
 
 import vertexai
 from dotenv import load_dotenv
@@ -60,19 +61,36 @@ def extract_reply(events: list[dict]) -> str:
 
 class AgentSessions:
     """Maps a Slack thread to its Agent Engine session, so a thread keeps its
-    own conversation context (the agent remembers earlier turns in it)."""
+    own conversation context (the agent remembers earlier turns in it).
+
+    The mapping lives in this process's memory, which bounds how the service
+    may be deployed: it is only correct on a single instance (hence
+    `--max-instances=1` in scripts/deploy-slack-bot-cloud-run.sh), since a
+    second instance would not know the threads the first one has seen and
+    would restart their conversations from scratch, at random. Scaling to
+    zero between mentions drops the mapping too — a thread mentioned again
+    after an idle period starts a fresh session. Acceptable for a POC;
+    surviving a restart or more than one instance means moving this to a
+    shared store (Firestore, Redis).
+    """
 
     def __init__(self, engine):
         self._engine = engine
         self._session_ids: dict[str, str] = {}
+        # Bolt dispatches each event in its own thread, so two mentions posted
+        # in the same Slack thread can reach get_or_create concurrently. Without
+        # the lock both miss the cache and create a session, and the second one
+        # overwrites the first — losing the context of the turn in flight.
+        self._lock = threading.Lock()
 
     def get_or_create(self, thread_key: str, user_id: str) -> str:
-        session_id = self._session_ids.get(thread_key)
-        if session_id is None:
-            session = self._engine.create_session(user_id=user_id)
-            session_id = session["id"]
-            self._session_ids[thread_key] = session_id
-        return session_id
+        with self._lock:
+            session_id = self._session_ids.get(thread_key)
+            if session_id is None:
+                session = self._engine.create_session(user_id=user_id)
+                session_id = session["id"]
+                self._session_ids[thread_key] = session_id
+            return session_id
 
 
 def build_bolt_app() -> App:

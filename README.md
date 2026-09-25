@@ -173,6 +173,13 @@ secret in Secret Manager, grants Cloud Run's runtime service account access to r
 deploys to Cloud Run with `min-instances=0`. It prints the service URL to use for the Event
 Subscriptions Request URL above. Re-running it updates the existing service and secrets in place.
 
+The service is also deployed with `--max-instances=1`, and that one is a correctness constraint:
+the bot keeps its Slack-thread → Agent Engine session mapping in memory, so a second instance
+wouldn't know about threads the first one has seen and would restart their conversations from
+scratch. For the same reason, a thread mentioned again after the service has scaled to zero starts
+a fresh session. Lifting either limitation means moving that mapping to a shared store (Firestore,
+Redis).
+
 Then in Slack: `@SRE Agent what's going on in namespace toto?`
 
 ### Local testing

@@ -77,6 +77,11 @@ echo "Granting ${RUNTIME_SA} access to the secrets..."
 grant_secret_access slack-bot-token
 grant_secret_access slack-signing-secret
 
+# max-instances=1 is a correctness constraint, not a cost one: the bot keeps
+# its Slack-thread -> Agent Engine session mapping in memory (see
+# AgentSessions in slack_bot/app.py), so a second instance would restart some
+# threads' conversations at random. One instance with 8 threads is plenty for
+# a chat front end; lifting this means moving that mapping to a shared store.
 echo "Deploying to Cloud Run (scale-to-zero: min-instances=0)..."
 gcloud run deploy "${SERVICE_NAME}" \
   --project "${PROJECT_ID}" \
@@ -84,7 +89,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --source slack_bot \
   --allow-unauthenticated \
   --min-instances=0 \
-  --max-instances=2 \
+  --max-instances=1 \
   --cpu=1 \
   --memory=512Mi \
   --timeout=300 \
