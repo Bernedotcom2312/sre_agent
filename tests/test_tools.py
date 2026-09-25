@@ -86,6 +86,44 @@ def test_get_alerts_handles_api_error(mock_client_cls, monkeypatch):
     assert result == {"error": "GCP API error in get_alerts: quota exceeded"}
 
 
+@patch("sre_agent.tools.logging.Client")
+def test_log_tools_reject_names_that_would_alter_the_filter(mock_client_cls, monkeypatch):
+    """A quote in an argument must be refused, not interpolated into a filter."""
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    injected = 'toto" OR resource.labels.namespace_name="kube-system'
+
+    for result in (
+        get_pod_logs(injected, "tata"),
+        get_pod_logs("toto", injected),
+        get_k8s_events(injected),
+        get_recent_deploys(injected),
+    ):
+        assert "Invalid" in result["error"]
+
+    mock_client_cls.assert_not_called()
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_log_tools_name_error_points_at_the_offending_argument(mock_client_cls, monkeypatch):
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+
+    assert "namespace" in get_pod_logs("BAD NS", "tata")["error"]
+    assert "pod" in get_pod_logs("toto", "BAD POD")["error"]
+
+
+@patch("sre_agent.tools.logging.Client")
+def test_log_tools_accept_generated_pod_names(mock_client_cls, monkeypatch):
+    """Real pod names carry the ReplicaSet hash — they must not be rejected."""
+    monkeypatch.setattr("sre_agent.tools.project_id", "my-project")
+    mock_client = MagicMock()
+    mock_client.list_entries.return_value = []
+    mock_client_cls.return_value = mock_client
+
+    result = get_pod_logs("kube-system", "dummy-app-7d9f8c4b5d-x2k9p")
+
+    assert "error" not in result
+
+
 def test_get_pod_logs_missing_project_id(monkeypatch):
     monkeypatch.setattr("sre_agent.tools.project_id", None)
 

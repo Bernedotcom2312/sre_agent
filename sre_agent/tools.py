@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
@@ -41,6 +42,35 @@ def _since(hours: int = 1) -> str:
     report an ongoing incident as a quiet namespace.
     """
     return (datetime.now(UTC) - timedelta(hours=hours)).strftime(time_format)
+
+
+# RFC 1123: lowercase alphanumerics, '-' and '.', starting and ending on an
+# alphanumeric. Length capped at the 253 characters Kubernetes allows for a
+# DNS subdomain name, which covers namespaces, pods and containers alike.
+_K8S_NAME_PATTERN = re.compile(r"[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?")
+
+
+def _name_error(**names: str) -> dict | None:
+    """Rejects arguments that cannot be Kubernetes object names.
+
+    These values are chosen by the model, so ultimately by whoever is talking
+    to the agent, and end up interpolated into Cloud Logging filter strings.
+    A quote or a parenthesis in one of them doesn't just fail to match: it
+    changes what the filter means. Validating here keeps filter building
+    honest without having to escape at every call site.
+
+    Returns an error dict naming the offending argument, or None if all the
+    values are valid.
+    """
+    for kind, value in names.items():
+        if not _K8S_NAME_PATTERN.fullmatch(value):
+            return {
+                "error": (
+                    f"Invalid {kind} name {value!r}: expected a Kubernetes name"
+                    " (lowercase letters, digits, '-' and '.')."
+                )
+            }
+    return None
 
 
 def handle_gcp_errors(func):
@@ -142,6 +172,9 @@ def get_pod_logs(namespace: str, pod: str) -> dict:
             )
         }
 
+    if error := _name_error(namespace=namespace, pod=pod):
+        return error
+
     log_filter = (
         f'resource.type="k8s_container"'
         f' AND resource.labels.namespace_name="{namespace}"'
@@ -179,6 +212,9 @@ def get_k8s_events(namespace: str) -> dict:
                 " var and no ADC-discovered project)."
             )
         }
+
+    if error := _name_error(namespace=namespace):
+        return error
 
     log_filter = (
         f'logName="projects/{project_id}/logs/events"'
@@ -229,6 +265,9 @@ def get_recent_deploys(namespace: str) -> dict:
                 " var and no ADC-discovered project)."
             )
         }
+
+    if error := _name_error(namespace=namespace):
+        return error
 
     log_filter = (
         f'logName="projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity"'
